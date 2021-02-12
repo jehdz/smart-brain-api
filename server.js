@@ -3,6 +3,11 @@ const bcrypt = require('bcrypt-nodejs');
 const cors = require('cors');
 const knex = require('knex');
 
+const register = require('./controllers/register');
+const signin = require('./controllers/signin');
+const profile = require('./controllers/profile');
+const image = require('./controllers/image');
+
 const db = knex({
     client: 'pg',
     connection: {
@@ -28,85 +33,14 @@ app.get('/', (req, res) => {
     res.send("success");
 })
 
-app.post('/signin', (req, res) => {
-    db.select('email', 'hash').from('login')
-        .where('email', '=', req.body.email)
-        .then(data => {
-            const isValid = bcrypt.compareSync(req.body.password, data[0].hash); //compare the password to the hashed password
-            // console.log(isValid); testing purposes
-            if(isValid) {
-                return db.select('*').from('users')
-                    .where('email', '=', req.body.email)
-                    .then(user => {
-                        // console.log(user); testing purposes
-                        res.json(user[0])
-                    })
-                    .catch(err => res.status(400).json('unable to get user'))
-            } else {
-                res.status(400).json('wrong credentials')
-            }
-        })
-        .catch(err => res.status(400).json('Wrong credentials'))
-})
+app.post('/signin', (req, res) => { signin.handleSignin(req, res, db, bcrypt) })
 
-app.post('/register', (req, res) => {
-    const {email, name, password} = req.body;
-    const hash = bcrypt.hashSync(password);
-        db.transaction(trx => { // yoou create a transaction when you have to do more than 2 things at once
-            trx.insert({ // we use the trx object instead of db to insert into the database
-                hash: hash,
-                email: email
-            })
-                .into('login')
-                .returning('email')
-                .then(loginEmail => {
-                    return trx('users')
-                        .returning('*')
-                        .insert({
-                            email: loginEmail[0],
-                            name: name,
-                            joined: new Date()
-                        })
-                        .then(user => {
-                            res.json(user[0]);
-                        })
-            })
-                .then(trx.commit) // to make sure this data is added, we need to use commit
-                .catch(trx.rollback) // rollback is used just in case anything fails. It wont let it go through
-        })
-
-        .catch(err => res.status(400).json('unable to register'))
-})
+app.post('/register', (req, res) => { register.handleRegister(req, res, db, bcrypt) })
 
 
-app.get('/profile/:id', ((req, res) => {
-    const { id } = req.params;
-    let found = false;
-    db.select('*').from('users').where({id})
-        .then(user => {
-        if(user.length) {
-            res.json(user[0]);
-        } else {
-            res.status(400).json('Not Found')
-        }
+app.get('/profile/:id', (req, res) => { profile.handleProfileGet( req, res, db)})
 
-    })
-        .catch(err => res.status(400).json('Error getting user'))
-
-}))
-
-app.put('/image', ((req, res) => {
-    const { id } = req.body;
-    db('users').where('id', '=', id)
-        .increment('entries', 1)
-        .returning('entries')
-        .then(entries => {
-            console.log(entries);
-            res.json(entries[0]);
-        })
-        .catch(err => res.status(400).json('unable to get entries'))
-
-}))
+app.put('/image', (req, res) => { image.handleImage(req, res, db) })
 
 // bcrypt.hash("bacon", null, null, function(err, hash) {
 //     // Store hash in your password DB.
